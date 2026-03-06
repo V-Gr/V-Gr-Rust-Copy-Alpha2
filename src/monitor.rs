@@ -80,6 +80,10 @@ impl WalletMonitor {
                 Some(id) => id.clone(),
                 None => continue,
             };
+            // Skip settled/redeemable positions (already filtered upstream, extra safety)
+            if pos.redeemable.unwrap_or(false) {
+                continue;
+            }
             let size = pos.size.unwrap_or(0.0);
             if size.abs() < 1e-9 {
                 continue; // skip zero-size

@@ -17,6 +17,7 @@ pub struct Config {
     pub min_bet_size: f64,
     pub max_slippage_bps: u64,
     pub dry_run: bool,
+    pub initial_balance: Option<f64>,
 
     // Endpoints
     pub clob_api_url: String,
@@ -56,6 +57,9 @@ impl Config {
                 .unwrap_or_else(|_| "false".to_string())
                 .parse()
                 .unwrap_or(false),
+            initial_balance: std::env::var("INITIAL_BALANCE")
+                .ok()
+                .and_then(|s| s.parse().ok()),
             clob_api_url: "https://clob.polymarket.com".to_string(),
             gamma_api_url: "https://data-api.polymarket.com".to_string(),
         })

@@ -110,8 +110,7 @@ impl PolymarketClient {
     // ─── Auth-ed: Account ─────────────────────────────────────────
 
     /// Get USDC balance.
-    /// First tries the CLOB balance-allowance endpoint (auth-ed),
-    /// then estimates from positions on the Data API as fallback.
+    /// Tries: CLOB balance-allowance → Data API position sum → INITIAL_BALANCE env.
     pub async fn get_balance(&self) -> Result<f64> {
         // Try CLOB balance-allowance first
         match self.clob_request(
@@ -130,24 +129,33 @@ impl PolymarketClient {
                 if balance > 0.0 {
                     return Ok(balance);
                 }
+                // CLOB returned 0 — may mean we need a different signature_type
+                warn!("CLOB balance-allowance returned 0, trying fallbacks");
             }
             Err(e) => {
-                debug!("CLOB balance-allowance failed: {}, trying Data API", e);
+                warn!("CLOB balance-allowance failed: {} — trying fallbacks", e);
             }
         }
 
-        // Fallback: estimate from Data API positions (sum of currentValue)
+        // Fallback 2: estimate from Data API positions (sum of currentValue)
         let positions = self.get_wallet_positions(&self.config.funder_address).await?;
         let mut total = 0.0_f64;
         for pos in &positions {
             let cv = pos.current_value.unwrap_or(0.0);
             total += cv;
         }
-        // If no positions, we still have some balance — return a small floor
-        if total < 0.01 {
-            total = 0.0;
+        if total > 0.01 {
+            return Ok(total);
         }
-        Ok(total)
+
+        // Fallback 3: use configured INITIAL_BALANCE
+        if let Some(ib) = self.config.initial_balance {
+            if ib > 0.0 {
+                return Ok(ib);
+            }
+        }
+
+        Ok(0.0)
     }
 
     /// Get all open orders
@@ -263,10 +271,11 @@ impl PolymarketClient {
         Ok(activities)
     }
 
-    /// Fetch current positions for a wallet from the Data API
+    /// Fetch current positions for a wallet from the Data API.
+    /// Automatically filters out settled/redeemable positions.
     pub async fn get_wallet_positions(&self, wallet: &str) -> Result<Vec<Position>> {
         let url = format!(
-            "{}/positions?user={}&sizeThreshold=0&limit=100",
+            "{}/positions?user={}&sizeThreshold=0&limit=500",
             self.config.gamma_api_url, wallet
         );
         let resp = self.http.get(&url).send().await?;
@@ -274,14 +283,22 @@ impl PolymarketClient {
         debug!("Data API positions response (first 500 chars): {}", &text[..text.len().min(500)]);
         // The Data API returns { "value": [...], "Count": N }
         let wrapper: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
-        if let Some(arr) = wrapper.get("value").and_then(|v| v.as_array()) {
-            let positions: Vec<Position> = arr.iter()
+        let raw: Vec<Position> = if let Some(arr) = wrapper.get("value").and_then(|v| v.as_array()) {
+            arr.iter()
                 .filter_map(|v| serde_json::from_value(v.clone()).ok())
-                .collect();
-            return Ok(positions);
+                .collect()
+        } else {
+            serde_json::from_str(&text).unwrap_or_default()
+        };
+        let total = raw.len();
+        // Filter out settled/redeemable positions (market resolved, not tradeable)
+        let positions: Vec<Position> = raw.into_iter()
+            .filter(|p| !p.redeemable.unwrap_or(false))
+            .collect();
+        if total != positions.len() {
+            debug!("Filtered {}/{} positions (removed {} settled/redeemable)",
+                positions.len(), total, total - positions.len());
         }
-        // Fallback: maybe it's a raw array?
-        let positions: Vec<Position> = serde_json::from_str(&text).unwrap_or_default();
         Ok(positions)
     }
 
@@ -302,15 +319,8 @@ impl PolymarketClient {
         Ok(total)
     }
 
-    /// Get our own positions
+    /// Get our own positions (via Data API using funder address)
     pub async fn get_my_positions(&self) -> Result<Vec<Position>> {
-        let resp = self.clob_request(
-            reqwest::Method::GET,
-            "/positions",
-            None,
-        ).await?;
-        let text = resp.text().await?;
-        let positions: Vec<Position> = serde_json::from_str(&text).unwrap_or_default();
-        Ok(positions)
+        self.get_wallet_positions(&self.config.funder_address).await
     }
 }

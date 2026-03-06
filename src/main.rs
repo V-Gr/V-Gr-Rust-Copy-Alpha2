@@ -55,15 +55,25 @@ async fn main() -> Result<()> {
     }
 
     // Check our balance
-    match client.get_balance().await {
-        Ok(b) => info!("Our USDC balance: ${:.2}", b),
-        Err(e) => warn!("Could not fetch balance (may need auth): {}", e),
-    }
+    let _our_balance = match client.get_balance().await {
+        Ok(b) => {
+            if b > 0.0 {
+                info!("Our USDC balance: ${:.2}", b);
+            } else {
+                warn!("Our USDC balance: $0.00 — set INITIAL_BALANCE in .env to override");
+            }
+            b
+        }
+        Err(e) => {
+            warn!("Could not fetch balance: {} — set INITIAL_BALANCE in .env", e);
+            config.initial_balance.unwrap_or(0.0)
+        }
+    };
 
-    // Check target wallet positions
+    // Check target wallet positions (already filtered: settled/redeemable excluded)
     let target_positions = client.get_wallet_positions(&config.target_wallet).await?;
     info!(
-        "Target wallet has {} active positions",
+        "Target wallet has {} active positions (settled markets excluded)",
         target_positions.len()
     );
     for pos in &target_positions {
