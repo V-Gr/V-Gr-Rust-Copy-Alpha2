@@ -84,6 +84,10 @@ impl WalletMonitor {
             if pos.redeemable.unwrap_or(false) {
                 continue;
             }
+            let price = pos.cur_price.unwrap_or(0.0);
+            if price < 0.001 {
+                continue; // skip resolved markets (price=0)
+            }
             let size = pos.size.unwrap_or(0.0);
             if size.abs() < 1e-9 {
                 continue; // skip zero-size
@@ -94,7 +98,6 @@ impl WalletMonitor {
             } else {
                 Side::Buy
             };
-            let price = pos.cur_price.unwrap_or(pos.avg_price.unwrap_or(0.5));
             let condition_id = pos.condition_id.clone().unwrap_or_default();
 
             map.insert(

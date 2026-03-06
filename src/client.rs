@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use reqwest::Client;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::auth::build_hmac_headers;
 use crate::config::Config;
@@ -291,12 +291,24 @@ impl PolymarketClient {
             serde_json::from_str(&text).unwrap_or_default()
         };
         let total = raw.len();
-        // Filter out settled/redeemable positions (market resolved, not tradeable)
+        // Filter out settled/resolved positions:
+        // - redeemable=true means market resolved, tokens claimable
+        // - curPrice=0.0 means market is dead (resolved or delisted)
         let positions: Vec<Position> = raw.into_iter()
-            .filter(|p| !p.redeemable.unwrap_or(false))
+            .filter(|p| {
+                if p.redeemable.unwrap_or(false) {
+                    return false;
+                }
+                // curPrice of exactly 0 means the market is resolved
+                let price = p.cur_price.unwrap_or(0.0);
+                if price < 0.001 {
+                    return false;
+                }
+                true
+            })
             .collect();
         if total != positions.len() {
-            debug!("Filtered {}/{} positions (removed {} settled/redeemable)",
+            info!("Filtered {}/{} positions (removed {} settled/resolved)",
                 positions.len(), total, total - positions.len());
         }
         Ok(positions)
