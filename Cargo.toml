@@ -1,0 +1,24 @@
+[package]
+name = "copymet"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.102"
+base64 = "0.22.1"
+chrono = "0.4.44"
+dashmap = "6.1.0"
+dotenv = "0.15.0"
+ethers = { version = "2.0.14", features = ["legacy"] }
+futures-util = "0.3.32"
+hex = "0.4.3"
+hmac = "0.12.1"
+reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+sha2 = "0.10.9"
+tokio = { version = "1.50.0", features = ["full"] }
+tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-webpki-roots"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["fmt", "env-filter"] }
+url = "2.5.8"
