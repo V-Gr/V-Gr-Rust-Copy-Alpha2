@@ -9,7 +9,7 @@ base64 = "0.22.1"
 chrono = "0.4.44"
 dashmap = "6.1.0"
 dotenv = "0.15.0"
-ethers = { version = "2.0.14", features = ["legacy"] }
+ethers = { version = "2.0.14", default-features = false, features = ["legacy", "rustls"] }
 futures-util = "0.3.32"
 hex = "0.4.3"
 hmac = "0.12.1"
