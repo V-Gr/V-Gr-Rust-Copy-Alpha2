@@ -68,12 +68,12 @@ async fn main() -> Result<()> {
     );
     for pos in &target_positions {
         info!(
-            "  - {} | size={:.4} | side={} | price={:.4} | market={}",
+            "  - {} | size={:.4} | side={} | price={:.4} | {}",
             pos.asset.as_deref().unwrap_or("?"),
             pos.size.unwrap_or(0.0),
-            pos.side.as_deref().unwrap_or("?"),
-            pos.cur_price.unwrap_or(0.0),
-            pos.market.as_deref().unwrap_or("?"),
+            pos.outcome.as_deref().unwrap_or("?"),
+            pos.cur_price.unwrap_or(pos.avg_price.unwrap_or(0.0)),
+            pos.title.as_deref().unwrap_or(pos.market.as_deref().unwrap_or("?")),
         );
     }
 

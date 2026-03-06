@@ -87,21 +87,39 @@ pub struct OrderResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Position {
     pub asset: Option<String>,          // token_id
+    #[serde(rename = "conditionId")]
     pub condition_id: Option<String>,
     pub size: Option<f64>,
     #[serde(rename = "avgPrice")]
     pub avg_price: Option<f64>,
     pub side: Option<String>,
-    pub market: Option<String>,
+    pub title: Option<String>,
+    pub slug: Option<String>,
     pub outcome: Option<String>,
+    #[serde(rename = "outcomeIndex")]
+    pub outcome_index: Option<u32>,
     #[serde(rename = "curPrice")]
     pub cur_price: Option<f64>,
+    #[serde(rename = "initialValue")]
+    pub initial_value: Option<f64>,
+    #[serde(rename = "currentValue")]
+    pub current_value: Option<f64>,
     #[serde(rename = "cashPnl")]
     pub cash_pnl: Option<f64>,
     #[serde(rename = "percentPnl")]
     pub percent_pnl: Option<f64>,
+    #[serde(rename = "totalBought")]
+    pub total_bought: Option<f64>,
+    #[serde(rename = "realizedPnl")]
+    pub realized_pnl: Option<f64>,
     #[serde(rename = "proxyWallet")]
     pub proxy_wallet: Option<String>,
+    #[serde(rename = "eventSlug")]
+    pub event_slug: Option<String>,
+    pub redeemable: Option<bool>,
+    pub mergeable: Option<bool>,
+    // Legacy field name for compatibility
+    pub market: Option<String>,
 }
 
 // ─── Trade activity from Gamma API ────────────────────────────────

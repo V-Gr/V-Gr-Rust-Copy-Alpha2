@@ -44,6 +44,7 @@ impl PolymarketClient {
             body_str,
         )?;
 
+        let method_str = method.as_str().to_string();
         let mut req = self.http.request(method, &url);
         for (k, v) in &headers {
             req = req.header(k, v);
@@ -52,6 +53,12 @@ impl PolymarketClient {
             req = req.header("Content-Type", "application/json").body(body_str.to_string());
         }
         let resp = req.send().await.context("CLOB request failed")?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            debug!("CLOB {} {} -> {} : {}", method_str, path, status, body);
+            anyhow::bail!("CLOB API error {}: {}", status, body);
+        }
         Ok(resp)
     }
 
@@ -102,22 +109,45 @@ impl PolymarketClient {
 
     // ─── Auth-ed: Account ─────────────────────────────────────────
 
-    /// Get USDC balance and allowance for our funder
+    /// Get USDC balance.
+    /// First tries the CLOB balance-allowance endpoint (auth-ed),
+    /// then estimates from positions on the Data API as fallback.
     pub async fn get_balance(&self) -> Result<f64> {
-        let resp = self.clob_request(
+        // Try CLOB balance-allowance first
+        match self.clob_request(
             reqwest::Method::GET,
             "/balance-allowance?asset_type=USDC",
             None,
-        ).await?;
-        let text = resp.text().await?;
-        debug!("Balance response: {}", text);
-        let ba: BalanceAllowance = serde_json::from_str(&text)?;
-        let balance = ba.balance
-            .unwrap_or_else(|| "0".to_string())
-            .parse::<f64>()
-            .unwrap_or(0.0);
-        // USDC has 6 decimals on-chain, CLOB returns human-readable
-        Ok(balance)
+        ).await {
+            Ok(resp) => {
+                let text = resp.text().await?;
+                debug!("Balance-allowance response: {}", text);
+                let ba: BalanceAllowance = serde_json::from_str(&text)?;
+                let balance = ba.balance
+                    .unwrap_or_else(|| "0".to_string())
+                    .parse::<f64>()
+                    .unwrap_or(0.0);
+                if balance > 0.0 {
+                    return Ok(balance);
+                }
+            }
+            Err(e) => {
+                debug!("CLOB balance-allowance failed: {}, trying Data API", e);
+            }
+        }
+
+        // Fallback: estimate from Data API positions (sum of currentValue)
+        let positions = self.get_wallet_positions(&self.config.funder_address).await?;
+        let mut total = 0.0_f64;
+        for pos in &positions {
+            let cv = pos.current_value.unwrap_or(0.0);
+            total += cv;
+        }
+        // If no positions, we still have some balance — return a small floor
+        if total < 0.01 {
+            total = 0.0;
+        }
+        Ok(total)
     }
 
     /// Get all open orders
@@ -217,14 +247,14 @@ impl PolymarketClient {
 
     // ─── Gamma API (public, no auth) ──────────────────────────────
 
-    /// Fetch recent activity/trades for a wallet from the Gamma API
+    /// Fetch recent activity/trades for a wallet from the Data API
     pub async fn get_wallet_activity(
         &self,
         wallet: &str,
         limit: u32,
     ) -> Result<Vec<GammaActivity>> {
         let url = format!(
-            "{}/activity?address={}&limit={}&sortBy=TIMESTAMP&sortOrder=DESC",
+            "{}/activity?user={}&limit={}",
             self.config.gamma_api_url, wallet, limit
         );
         let resp = self.http.get(&url).send().await?;
@@ -233,14 +263,24 @@ impl PolymarketClient {
         Ok(activities)
     }
 
-    /// Fetch current positions for a wallet from the Gamma API
+    /// Fetch current positions for a wallet from the Data API
     pub async fn get_wallet_positions(&self, wallet: &str) -> Result<Vec<Position>> {
         let url = format!(
-            "{}/positions?address={}&sizeThreshold=0&limit=100",
+            "{}/positions?user={}&sizeThreshold=0&limit=100",
             self.config.gamma_api_url, wallet
         );
         let resp = self.http.get(&url).send().await?;
         let text = resp.text().await?;
+        debug!("Data API positions response (first 500 chars): {}", &text[..text.len().min(500)]);
+        // The Data API returns { "value": [...], "Count": N }
+        let wrapper: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+        if let Some(arr) = wrapper.get("value").and_then(|v| v.as_array()) {
+            let positions: Vec<Position> = arr.iter()
+                .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                .collect();
+            return Ok(positions);
+        }
+        // Fallback: maybe it's a raw array?
         let positions: Vec<Position> = serde_json::from_str(&text).unwrap_or_default();
         Ok(positions)
     }

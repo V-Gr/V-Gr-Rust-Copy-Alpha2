@@ -6,6 +6,7 @@ pub struct Config {
     pub api_key: String,
     pub api_secret: String,
     pub api_passphrase: String,
+    pub private_key: String,
     pub funder_address: String,
 
     // Target wallet to copy
@@ -33,6 +34,8 @@ impl Config {
                 .context("POLYMARKET_API_SECRET not set")?,
             api_passphrase: std::env::var("POLYMARKET_API_PASSPHRASE")
                 .context("POLYMARKET_API_PASSPHRASE not set")?,
+            private_key: std::env::var("POLYMARKET_PRIVATE_KEY")
+                .unwrap_or_default(),
             funder_address: std::env::var("POLYMARKET_FUNDER_ADDRESS")
                 .context("POLYMARKET_FUNDER_ADDRESS not set")?,
             target_wallet: std::env::var("TARGET_WALLET_ADDRESS")
@@ -54,7 +57,7 @@ impl Config {
                 .parse()
                 .unwrap_or(false),
             clob_api_url: "https://clob.polymarket.com".to_string(),
-            gamma_api_url: "https://gamma-api.polymarket.com".to_string(),
+            gamma_api_url: "https://data-api.polymarket.com".to_string(),
         })
     }
 }
