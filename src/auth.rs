@@ -19,7 +19,9 @@ pub fn build_hmac_headers(
 
     let message = format!("{}{}{}{}", timestamp, method.to_uppercase(), path, body);
 
-    let secret_bytes = general_purpose::STANDARD.decode(api_secret)?;
+    let secret_bytes = general_purpose::URL_SAFE.decode(api_secret)
+        .or_else(|_| general_purpose::URL_SAFE_NO_PAD.decode(api_secret))
+        .or_else(|_| general_purpose::STANDARD.decode(api_secret))?;
     let mut mac = HmacSha256::new_from_slice(&secret_bytes)?;
     mac.update(message.as_bytes());
     let signature = general_purpose::STANDARD.encode(mac.finalize().into_bytes());
